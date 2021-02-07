@@ -201,7 +201,6 @@ private:
 
     bool inputEvent(const GdkEvent * event) {
         if (event->type == GDK_KEY_PRESS) {
-            //std::cout << event->key.state << " " << event->key.keyval << std::endl;
             if (event->key.keyval == GDK_KEY_Down) {
                 down();
             }
@@ -220,14 +219,12 @@ private:
     }
 
     bool timerTimeout() {
-        // collison detection
         down();
-        //m_shapeY++;
 
         return true;
     }
 
-    void drawTile(const Cairo::RefPtr<Cairo::Context> &cr, float x, float y, float size, TILE tile) {
+    void drawTile(const Cairo::RefPtr<Cairo::Context> &cr, int x, int y, int width, int height, TILE tile) {
         switch (tile) {
         case TILE::NOTHING:
             return;
@@ -247,7 +244,7 @@ private:
             cr->set_source_rgb(0, 1, 1);
             break;
         }
-        cr->rectangle(x, y, size, size);
+        cr->rectangle(x, y, width, height);
         cr->fill();
         cr->stroke();
     }
@@ -263,18 +260,22 @@ private:
         const float tileSize = std::min( (float)width / m_columns, (float)height / m_rows );
 
         for (int row = 0; row < m_rows; row++) {
-            float y = row * tileSize;
+            int y = row * tileSize;
+            int sizeY = (row + 1) * tileSize - y;
             for (int col = 0; col < m_columns; col++) {
-                float x = col * tileSize;
-                drawTile(cr, x, y, tileSize, m_tiles[row][col]);
+                int x = col * tileSize;
+                int sizeX = (col + 1) * tileSize - x;
+                drawTile(cr, x, y, sizeX, sizeY, m_tiles[row][col]);
             }
         }
         for (int i = 0; i < m_currentShape.size(); i++) {
             int row = m_currentShape[i].m_yOffset + m_shapeY;
             int col = m_currentShape[i].m_xOffset + m_shapeX;
-            float y = row * tileSize;
-            float x = col * tileSize;
-            drawTile(cr, x, y, tileSize, m_currentType);
+            int y = row * tileSize;
+            int x = col * tileSize;
+            int sizeY = (row + 1) * tileSize - y;
+            int sizeX = (col + 1) * tileSize - x;
+            drawTile(cr, x, y, sizeX, sizeY, m_currentType);
         }
 
         return true;
