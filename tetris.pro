@@ -7,4 +7,10 @@ CONFIG += link_pkgconfig
 PKGCONFIG += gtkmm-3.0
 
 SOURCES += \
-        ./src/main.cpp
+        ./src/main.cpp \
+        Color.cpp
+
+HEADERS += \
+    Color.h
+
+QMAKE_CXXFLAGS += -Werror
