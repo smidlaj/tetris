@@ -8,9 +8,16 @@ PKGCONFIG += gtkmm-3.0
 
 SOURCES += \
         ./src/main.cpp \
-        Color.cpp
+        ./src/Color.cpp \
+        src/Shape.cpp \
+        src/Texts.cpp \
+        src/Tile.cpp
 
 HEADERS += \
-    Color.h
+    ./headers/Color.h \
+    ./headers/Tile.h \
+    headers/Shape.h \
+    headers/Texts.h
 
 QMAKE_CXXFLAGS += -Werror
+INCLUDEPATH += ./headers/

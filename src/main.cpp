@@ -4,13 +4,15 @@
 #include <cstdlib>
 #include <limits>
 #include <cairomm/context.h>
-#include "Color.h"
+#include <Color.h>
+#include <Shape.h>
+#include <Texts.h>
 
 class MainWindow: public Gtk::Window {
 public:
     MainWindow() {
         set_title("Tetris");
-        set_default_size(500, 700);
+        set_default_size(800, 700);
 
         m_drawArea.signal_draw().connect(
                     sigc::mem_fun(*this, &MainWindow::draw));
@@ -30,7 +32,7 @@ public:
         m_rows = rows;
         m_columns = columns;
         m_tiles.clear();
-        std::vector<TILE> row(columns, TILE::NOTHING);
+        std::vector<Tile> row(columns, Tile(Tile::TYPE::NOTHING, 0, 0));
         m_tiles.resize(rows, row);
 
         initShapes();
@@ -40,35 +42,14 @@ public:
     }
 
 private:
-
-    struct Coord {
-        int m_xOffset;
-        int m_yOffset;
-    };
-
-    enum class TILE: int {
-        NOTHING = -1,
-        RED,
-        GREEN,
-        BLUE,
-        YELLOW,
-        CYAN,
-        LAST_TYPE
-    };
-    typedef std::vector<Coord> Shape;
-
-    std::vector<Shape> m_shapes;
+    std::vector<std::vector<std::pair<int, int>>> m_shapes;
     unsigned int m_currentShapeIndex;
     unsigned int m_nextShapeIndex;
     Shape m_currentShape;
     Shape m_nextShape;
-    int m_shapeX;
-    int m_shapeY;
-    TILE m_currentType;
-    TILE m_nextType;
     Gtk::DrawingArea m_drawArea;
     Gtk::Box m_box;
-    std::vector<std::vector<TILE>> m_tiles;
+    std::vector<std::vector<Tile>> m_tiles;
     sigc::connection m_timer;
     unsigned int m_currentSpeed = 1000;
 
@@ -78,7 +59,7 @@ private:
     const unsigned int m_squareIndex = 4;
 
     void initShapes() {
-        m_shapes = std::vector<Shape>({
+        m_shapes = std::vector<std::vector<std::pair<int, int>>>({
             { { 0, -1 },  { 0, 0 },   { -1, 0 },  { -1, 1 } },
               { { 0, -1 },  { 0, 0 },   { 1, 0 },   { 1, 1 } },
               { { 0, -1 },  { 0, 0 },   { 0, 1 },   { 0, 2 } },
@@ -92,54 +73,52 @@ private:
     void nextShape() {
         if (m_currentShape.empty()) {
             m_currentShapeIndex = static_cast<unsigned int>(rand()) % m_shapes.size();
-            m_currentShape = m_shapes[m_currentShapeIndex];
-            m_currentType = static_cast<TILE>((rand() % static_cast<int>(TILE::LAST_TYPE)));
+            Tile::TYPE currentType = static_cast<Tile::TYPE>((rand() % static_cast<int>(Tile::TYPE::LAST_TYPE)));
+            m_currentShape = Shape(m_shapes[m_currentShapeIndex], currentType, m_columns / 2);
         } else {
             m_currentShapeIndex = m_nextShapeIndex;
             m_currentShape = m_nextShape;
-            m_currentType = m_nextType;
+            m_currentShape.setX(m_columns / 2);
         }
         m_nextShapeIndex = static_cast<unsigned int>(rand()) % m_shapes.size();
-        m_nextShape = m_shapes[m_nextShapeIndex];
-        m_nextType = static_cast<TILE>((rand() % static_cast<int>(TILE::LAST_TYPE)));
-        m_shapeX = m_columns / 2;
-        m_shapeY = std::numeric_limits<int>::max();
-        for (unsigned int i = 0; i < m_currentShape.size(); i++) {
-            m_shapeY = std::min(m_shapeY, m_currentShape[i].m_yOffset);
-        }
-        m_shapeY *= -1;
+        Tile::TYPE m_nextType = static_cast<Tile::TYPE>((rand() % static_cast<int>(Tile::TYPE::LAST_TYPE)));
+        m_nextShape = Shape(m_shapes[m_nextShapeIndex], m_nextType, 0);
     }
 
-    bool collison(const Shape & shape, int x, int y) {
-        for (unsigned int i = 0; i < shape.size(); i++) {
-            int row = shape[i].m_yOffset + y;
-            int col = shape[i].m_xOffset + x;
+    bool collison(Shape & shape, int offsetX, int offsetY) {
+        bool detected = false;
+        shape.forallTile([&](int row, int col, Tile &){
+            row += offsetY;
+            col += offsetX;
             if (row < 0 or static_cast<unsigned int>(row) >= m_rows) {
-                return true;
+                detected = true;
+                return;
             }
             if (col < 0 or static_cast<unsigned int>(col) >= m_columns) {
-                return true;
+                detected = true;
+                return;
             }
-            if (m_tiles[static_cast<unsigned int>(row)][static_cast<unsigned int>(col)] != TILE::NOTHING) {
-                return true;
+            if (m_tiles[static_cast<unsigned int>(row)][static_cast<unsigned int>(col)].type() != Tile::TYPE::NOTHING) {
+                detected = true;
+                return;
             }
-        }
-        return false;
+        });
+        return detected;
     }
 
-    void placeShape(const Shape & shape, TILE type, int x, int y) {
-        for (unsigned int i = 0; i < shape.size(); i++) {
-            int row = shape[i].m_yOffset + y;
-            int col = shape[i].m_xOffset + x;
-            m_tiles[static_cast<unsigned int>(row)][static_cast<unsigned int>(col)] = type;
-        }
+    void placeShape(Shape & shape) {
+        shape.forallTile([&](int row, int col, Tile & tile){
+            Tile copyTile = tile;
+            tile.setOffsets(0, 0);
+            m_tiles[static_cast<unsigned int>(row)][static_cast<unsigned int>(col)] = copyTile;
+        });
     }
 
     void checkRows() {
         for (int row = static_cast<int>(m_tiles.size()) - 1; row >= 0; ) {
             unsigned int counter = 0;
             for (unsigned int col = 0; col < m_columns; col++) {
-                if (m_tiles[static_cast<unsigned int>(row)][col] != TILE::NOTHING) {
+                if (m_tiles[static_cast<unsigned int>(row)][col].type() != Tile::TYPE::NOTHING) {
                     counter++;
                 }
             }
@@ -155,13 +134,13 @@ private:
 
     void down() {
         // collison detection
-        if (not collison(m_currentShape, m_shapeX, m_shapeY+1)) {
-            m_shapeY++;
+        if (not collison(m_currentShape, 0, 1)) {
+            m_currentShape.moveDown();
             m_timer.disconnect();
             m_timer = Glib::signal_timeout().connect(
                         sigc::mem_fun(*this, &MainWindow::timerTimeout), m_currentSpeed );
         } else {
-            placeShape(m_currentShape, m_currentType, m_shapeX, m_shapeY);
+            placeShape(m_currentShape);
             checkRows();
             nextShape();
         }
@@ -172,13 +151,9 @@ private:
         if (m_currentShapeIndex == m_squareIndex) {
             return;
         }
-        Shape rotated;
-        for (unsigned int i = 0; i < m_currentShape.size(); i++) {
-            rotated.push_back(
-                {-m_currentShape[i].m_yOffset,
-                  m_currentShape[i].m_xOffset} );
-        }
-        if (not collison(rotated, m_shapeX, m_shapeY)) {
+        Shape rotated = m_currentShape;
+        rotated.rotateRight();
+        if (not collison(rotated, 0, 0)) {
             m_currentShape = rotated;
         }
         m_drawArea.queue_draw();
@@ -190,15 +165,15 @@ private:
     }
 
     void moveRight() {
-        if (not collison(m_currentShape, m_shapeX+1, m_shapeY)) {
-            m_shapeX++;
+        if (not collison(m_currentShape, 1, 0)) {
+            m_currentShape.moveRight();
         }
         m_drawArea.queue_draw();
     }
 
     void moveLeft() {
-        if (not collison(m_currentShape, m_shapeX-1, m_shapeY)) {
-            m_shapeX--;
+        if (not collison(m_currentShape, -1, 0)) {
+            m_currentShape.moveLeft();
         }
         m_drawArea.queue_draw();
     }
@@ -228,86 +203,8 @@ private:
         return true;
     }
 
-    void drawTile(const Cairo::RefPtr<Cairo::Context> &cr, int x, int y, int width, int height, TILE tile) {
-        int border = static_cast<int>(std::min(width, height) * 0.2);
-        Color color;
-        switch (tile) {
-        case TILE::LAST_TYPE:
-        case TILE::NOTHING:
-            return;
-        case TILE::RED:
-            color = Color::createRed();
-            break;
-        case TILE::GREEN:
-            color = Color::createGreen();
-            break;
-        case TILE::BLUE:
-            color = Color::createBlue();
-            break;
-        case TILE::YELLOW:
-            color = Color::createYellow();
-            break;
-        case TILE::CYAN:
-            color = Color::createCyan();
-            break;
-        }
-        color.apply(cr);
-        cr->rectangle(x, y, width, height);
-        cr->fill();
-        cr->stroke();
-
-        // left border
-        color.lighter(0.25f);
-        color.apply(cr);
-        cr->move_to(x, y);
-        cr->line_to(x + border, y + border);
-        cr->line_to(x + border, y + height - border);
-        cr->line_to(x, y + height);
-        cr->line_to(x, y);
-        cr->fill();
-        cr->stroke();
-
-        // upper border
-        color.lighter(0.25f);
-        color.apply(cr);
-        cr->move_to(x, y);
-        cr->line_to(x + border, y + border);
-        cr->line_to(x + width - border, y + border);
-        cr->line_to(x + width, y);
-        cr->line_to(x, y);
-        cr->fill();
-        cr->stroke();
-
-        // right border
-        color.darker(0.75f);
-        color.apply(cr);
-        cr->move_to(x + width, y);
-        cr->line_to(x + width - border, y + border);
-        cr->line_to(x + width - border, y + height - border);
-        cr->line_to(x + width, y + height);
-        cr->line_to(x + width, y);
-        cr->fill();
-        cr->stroke();
-
-        // bottom border
-        color.darker(0.25f);
-        color.apply(cr);
-        cr->move_to(x, y + height);
-        cr->line_to(x + border, y + height - border);
-        cr->line_to(x + width - border, y + height - border);
-        cr->line_to(x + width, y + height);
-        cr->line_to(x, y + height);
-        cr->fill();
-        cr->stroke();
-    }
-
-    bool draw(const Cairo::RefPtr<Cairo::Context> &cr) {
-        const int width = m_drawArea.get_width();
-        const int height = m_drawArea.get_height();
-        cr->set_source_rgb(0, 0, 0);
-        cr->rectangle(0, 0, width, height);
-        cr->fill();
-        cr->stroke();
+    void drawTiles(const Cairo::RefPtr<Cairo::Context> &cr,
+                   int startX, int startY, int width, int height) {
 
         const float tileSize = std::min( static_cast<float>(width) / m_columns, static_cast<float>(height) / m_rows );
 
@@ -317,18 +214,79 @@ private:
             for (unsigned int col = 0; col < m_columns; col++) {
                 int x = static_cast<int>(col * tileSize);
                 int sizeX = static_cast<int>((col + 1) * tileSize) - x;
-                drawTile(cr, x, y, sizeX, sizeY, m_tiles[row][col]);
+                m_tiles[row][col].draw(cr, x + startX, y + startY, sizeX, sizeY);
             }
         }
-        for (unsigned int i = 0; i < m_currentShape.size(); i++) {
-            int row = m_currentShape[i].m_yOffset + m_shapeY;
-            int col = m_currentShape[i].m_xOffset + m_shapeX;
-            int y = static_cast<int>(row * tileSize);
-            int x = static_cast<int>(col * tileSize);
-            int sizeY = static_cast<int>((row + 1) * tileSize) - y;
-            int sizeX = static_cast<int>((col + 1) * tileSize) - x;
-            drawTile(cr, x, y, sizeX, sizeY, m_currentType);
-        }
+        m_currentShape.draw(cr, startX, startY, tileSize);
+
+    }
+
+    void drawNext(const Cairo::RefPtr<Cairo::Context> &cr,
+                   int startX, int startY,
+                  int width, int height, float tileSize) {
+        const int borderWidth = 3;
+        cr->set_source_rgb(1, 1, 1);
+        cr->set_line_width(borderWidth);
+        cr->rectangle(startX - borderWidth,
+                      startY - borderWidth,
+                      width + 2 * borderWidth,
+                      height + 2 * borderWidth);
+        cr->stroke();
+
+        int shapeWidth;
+        int shapeHeight;
+        int offsetX;
+        int offsetY;
+        m_nextShape.drawGeometry(tileSize, &shapeWidth, &shapeHeight,
+                         &offsetX, &offsetY);
+        m_nextShape.draw(cr, startX - offsetX + (width - shapeWidth) / 2,
+                         startY - offsetY + (height - shapeHeight) / 2, tileSize);
+
+        Cairo::TextExtents extents;
+        cr->set_font_size( get_width() * 0.03 );
+        cairo_select_font_face(cr->cobj(), "Purisa",
+           CAIRO_FONT_SLANT_NORMAL,
+           CAIRO_FONT_WEIGHT_BOLD);
+        cr->get_text_extents(Texts::nextShape(), extents);
+
+        cr->set_source_rgb(1, 1, 1);
+        cr->move_to(startX, startY - extents.height);
+        cr->show_text(Texts::nextShape());
+        cr->stroke();
+    }
+
+    bool draw(const Cairo::RefPtr<Cairo::Context> &cr) {
+        const int width = m_drawArea.get_width();
+        const int height = m_drawArea.get_height();
+
+        // background
+        cr->set_source_rgb(0, 0, 0);
+        cr->rectangle(0, 0, width, height);
+        cr->fill();
+        cr->stroke();
+
+        int borderWidth = 3;
+        cr->set_source_rgb(1, 1, 1);
+        cr->set_line_width(borderWidth);
+        int playAreaWidth = static_cast<int>(width * 0.5);
+        const float tileSize = static_cast<float>(playAreaWidth) / m_columns;
+        int playAreaHeight = static_cast<int>(m_rows * tileSize);
+        int playAreaX = static_cast<int>(width * 0.1);
+        int playAreaY = static_cast<int>(height * 0.1);
+        cr->rectangle(playAreaX - borderWidth,
+                      playAreaY - borderWidth,
+                      playAreaWidth + 2 * borderWidth,
+                      playAreaHeight + 2 * borderWidth);
+        cr->stroke();
+
+
+        drawTiles(cr, playAreaX, playAreaY, playAreaWidth, playAreaHeight);
+
+        int nextAreaX = static_cast<int>(width * 0.7);
+        int nextAreaY = static_cast<int>(height * 0.15);
+        int nextAreaWidth = static_cast<int>(width * 0.2);
+        int nextAreaHeight = static_cast<int>(height * 0.2);
+        drawNext(cr, nextAreaX, nextAreaY, nextAreaWidth, nextAreaHeight, tileSize);
 
         return true;
     }
