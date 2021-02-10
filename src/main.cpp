@@ -285,7 +285,7 @@ private:
         int nextAreaX = static_cast<int>(width * 0.7);
         int nextAreaY = static_cast<int>(height * 0.15);
         int nextAreaWidth = static_cast<int>(width * 0.2);
-        int nextAreaHeight = static_cast<int>(height * 0.2);
+        int nextAreaHeight = static_cast<int>(tileSize * 5);
         drawNext(cr, nextAreaX, nextAreaY, nextAreaWidth, nextAreaHeight, tileSize);
 
         return true;
